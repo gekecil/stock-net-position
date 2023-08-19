@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class StocknetpositionConfig(AppConfig):
+class LoanUsersConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'StockNetPosition'
+    name = 'loan_users'
