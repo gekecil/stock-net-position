@@ -19,7 +19,10 @@ class NetPositionView(LoginRequiredMixin, TemplateView):
 
         context['columns'] = [
             {'attribute_name': 'stock_name', 'column_name': 'Stock Name'},
-            {'attribute_name': 'purchase_quote', 'column_name': 'Purchase Quote'},
+            {'attribute_name': 'average_quote', 'column_name': 'Average Quote'},
+            {'attribute_name': 'revaluation_quote', 'column_name': 'Revaluation Quote'},
+            {'attribute_name': 'amount', 'column_name': 'Amount'},
+            {'attribute_name': 'profit_loss', 'column_name': 'Profit/Loss'},
         ]
 
         return context
