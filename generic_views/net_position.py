@@ -1,11 +1,9 @@
 import requests
 from django.views.generic.list import ListView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.sites.models import Site
-from django.urls import reverse, resolve
+from django.apps import apps
 from django.db.models import F, Value, Sum
 from django.db.models.functions import Coalesce
-from ..apps import StockNetPositionConfig
 from ..models import NavLink, UserToken, Stock, Exchange
 
 class NetPositionListView(LoginRequiredMixin, ListView):
@@ -19,7 +17,7 @@ class NetPositionListView(LoginRequiredMixin, ListView):
         quotes_request = requests.get(authorization.url, headers={'Authorization': str(authorization)})
 
         for obj in queryset:
-            exchange = Exchange.objects.order_by('pub_date').filter(stock=obj)
+            exchange = Exchange.objects.order_by('date_updated').filter(stock=obj)
             exchange_purchase = exchange.filter(purchase_sale='purchase').annotate(amount_quote=F('amount') * F('quote')).aggregate(amount_quote_sum=Coalesce(Sum('amount_quote'), Value(0)), volume=Coalesce(Sum('amount'), Value(0)))
             exchange_sale = exchange.filter(purchase_sale='sale').annotate(amount_quote=-F('amount') * F('quote')).aggregate(amount_quote_sum=Coalesce(Sum('amount_quote'), Value(0)), volume=-Coalesce(Sum('amount'), Value(0)))
 
@@ -56,10 +54,8 @@ class NetPositionListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['request'] = self.request
-        context['app'] = resolve(self.request.path)
-        context['site'] = Site.objects.get_current(self.request)
-        context['title'] = '%s - %s' % (NavLink.objects.get(path=self.request.path).title, StockNetPositionConfig.verbose_name)
+
+        context['title'] = '%s - %s' % (NavLink.objects.get(path=self.request.path).title, apps.get_app_config(self.request.resolver_match.app_name).verbose_name)
         context['nav_links'] = NavLink.objects.order_by('date_created').all()
 
         context['buttons'] = []

@@ -1,24 +1,29 @@
 from django.views.generic.list import ListView
+from django.views.generic.detail import DetailView
 from django.views.generic.edit import CreateView, UpdateView, DeleteView
-from django.forms import modelform_factory, inlineformset_factory, TextInput
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.sites.models import Site
-from django.urls import resolve, reverse_lazy
-from ..apps import StockNetPositionConfig
+from django.apps import apps
+from django.forms import TextInput
+from django.urls import reverse
 from ..models import NavLink, Stock, Exchange
 
 class StockExchangeListView(LoginRequiredMixin, ListView):
     model = Exchange
-    ordering = ['-pub_date']
+    ordering = ['-date_updated']
     template_name = 'contents/list.html'
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        for obj in queryset:
+            obj.view_name = '%s:detail-stock-exchange' % self.request.resolver_match.app_name
+
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        context['request'] = self.request
-        context['app'] = resolve(self.request.path)
-        context['site'] = Site.objects.get_current(self.request)
-        context['title'] = '%s - %s' % (NavLink.objects.get(path=self.request.path).title, StockNetPositionConfig.verbose_name)
+        context['title'] = '%s - %s' % (NavLink.objects.get(path=self.request.path).title, apps.get_app_config(self.request.resolver_match.app_name).verbose_name)
         context['nav_links'] = NavLink.objects.order_by('date_created').all()
 
         context['buttons'] = [
@@ -26,23 +31,52 @@ class StockExchangeListView(LoginRequiredMixin, ListView):
             {'name': 'Sale', 'path': self.request.path+'/sale'},
         ]
 
-        context['fields'] = ['stock', 'quote', 'amount', 'purchase_sale', 'auth_user', 'pub_date']
+        context['fields'] = ['stock', 'quote', 'amount', 'purchase_sale', 'date_created', 'date_updated']
+
+        return context
+
+class StockExchangeDetailView(LoginRequiredMixin, DetailView):
+    model = Exchange
+    template_name = 'contents/detail.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        context['title'] = 'Detail Stock Exchange - %s' % apps.get_app_config(self.request.resolver_match.app_name).verbose_name
+        context['nav_links'] = NavLink.objects.order_by('date_created').all()
+
+        context['buttons'] = [
+            {
+                'name': 'update stock exchange',
+                'url': reverse('%s:update-stock-exchange' % self.request.resolver_match.app_name, kwargs={'pk': self.get_object().pk}),
+                'color': 'primary',
+            },
+            {
+                'name': 'delete',
+                'url': reverse('%s:delete-stock-exchange' % self.request.resolver_match.app_name, kwargs={'pk': self.get_object().pk}),
+                'color': 'danger',
+            },
+        ]
+
+        context['fields'] = ['stock', 'quote', 'amount', 'purchase_sale', 'auth_user', 'date_created', 'date_updated']
 
         return context
 
 class StockExchangeUpdateView(LoginRequiredMixin, UpdateView):
     model = Exchange
     fields = ['stock', 'quote', 'amount']
-    template_name = 'contents/single-form.html'
-    success_url = reverse_lazy('%s:%s' % (StockNetPositionConfig.name, 'stock-exchange'))
+    template_name = 'contents/base-form.html'
 
     def get_form(self):
-        form = super(StockExchangeUpdateView, self).get_form()
+        form = super(__class__, self).get_form()
 
         form.fields['quote'].widget.attrs.update({'class': 'form-control'})
         form.fields['amount'].widget.attrs.update({'class': 'form-control'})
 
-        if 'stock' in form.fields:
+        if form.instance.purchase_sale == 'purchase':
+            form.fields['stock'].widget = TextInput(attrs={'class': 'form-control', 'readonly': True})
+
+        else:
             form.fields['stock'].widget.attrs.update({'class': 'form-select'})
 
         return form
@@ -50,57 +84,46 @@ class StockExchangeUpdateView(LoginRequiredMixin, UpdateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        form = modelform_factory(
-            Stock,
-            fields=('name', ),
-            widgets={
-                'name': TextInput(attrs={'class': 'form-control'}),
-            }
-        )
-
-        context['request'] = self.request
-        context['app'] = resolve(self.request.path)
-        context['site'] = Site.objects.get_current(self.request)
-        context['title'] = 'Update Stock Exchange - %s' % (StockNetPositionConfig.verbose_name)
+        context['title'] = 'Update Stock Exchange - %s' % (apps.get_app_config(self.request.resolver_match.app_name).verbose_name)
         context['nav_links'] = NavLink.objects.order_by('date_created').all()
-
-        context['forms'] = [form(instance=self.get_object().stock), self.get_form()]
-        context['can_delete'] = True
 
         return context
 
     def form_valid(self, form):
         form.instance.auth_user = self.request.user
 
-        if 'stock' not in form.fields:
-            form.instance.stock = Stock(name=self.request.POST.get('name'), auth_user=self.request.user)
+        if form.instance.purchase_sale == 'purchase':
+            form.instance.stock = Stock(name=self.request.POST.get('stock'), auth_user=self.request.user)
 
         return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('%s:stock-exchange' % self.request.resolver_match.app_name)
 
 class StockExchangeDeleteView(LoginRequiredMixin, DeleteView):
     model = Exchange
     template_name = 'contents/confirm-delete.html'
-    success_url = reverse_lazy('%s:%s' % (StockNetPositionConfig.name, 'stock-exchange'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        context['request'] = self.request
-        context['app'] = resolve(self.request.path)
-        context['site'] = Site.objects.get_current(self.request)
-        context['title'] = 'Delete Stock Exchange - %s' % (StockNetPositionConfig.verbose_name)
+        context['title'] = 'Delete Stock Exchange - %s' % (apps.get_app_config(self.request.resolver_match.app_name).verbose_name)
         context['nav_links'] = NavLink.objects.order_by('date_created').all()
 
         return context
 
-class StockExchangePurchaseCreateView(LoginRequiredMixin, CreateView):
+    def get_success_url(self):
+        return reverse('%s:stock-exchange' % self.request.resolver_match.app_name)
+
+class StockExchangePurchaseView(LoginRequiredMixin, CreateView):
     model = Exchange
-    fields = ['quote', 'amount']
-    template_name = 'contents/relational-form.html'
-    success_url = reverse_lazy('%s:%s' % (StockNetPositionConfig.name, 'stock-exchange'))
+    fields = ['stock', 'quote', 'amount']
+    template_name = 'contents/base-form.html'
 
     def get_form(self):
-        form = super(StockExchangePurchaseCreateView, self).get_form()
+        form = super(__class__, self).get_form()
+
+        form.fields['stock'].widget = TextInput()
 
         for field in form.fields.values():
             field.widget.attrs.update({'class': 'form-control'})
@@ -110,39 +133,28 @@ class StockExchangePurchaseCreateView(LoginRequiredMixin, CreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        form = modelform_factory(
-            Stock,
-            fields=('name', ),
-            widgets={
-                'name': TextInput(attrs={'class': 'form-control'}),
-            }
-        )
-
-        context['request'] = self.request
-        context['app'] = resolve(self.request.path)
-        context['site'] = Site.objects.get_current(self.request)
-        context['title'] = 'Stock Exchange Purchase - %s' % (StockNetPositionConfig.verbose_name)
+        context['title'] = 'Stock Exchange Purchase - %s' % (apps.get_app_config(self.request.resolver_match.app_name).verbose_name)
         context['nav_links'] = NavLink.objects.order_by('date_created').all()
-
-        context['forms'] = [form(), self.get_form()]
 
         return context
 
     def form_valid(self, form):
         form.instance.auth_user = self.request.user
-        form.instance.stock = Stock(name=self.request.POST.get('name'), auth_user=self.request.user)
+        form.instance.stock = Stock(name=self.request.POST.get('stock'), auth_user=self.request.user)
         form.instance.purchase_sale = 'purchase'
 
         return super().form_valid(form)
 
-class StockExchangeSaleCreateView(LoginRequiredMixin, CreateView):
+    def get_success_url(self):
+        return reverse('%s:stock-exchange' % self.request.resolver_match.app_name)
+
+class StockExchangeSaleView(LoginRequiredMixin, CreateView):
     model = Exchange
     fields = ['stock', 'quote', 'amount']
-    template_name = 'contents/single-form.html'
-    success_url = reverse_lazy('%s:%s' % (StockNetPositionConfig.name, 'stock-exchange'))
+    template_name = 'contents/base-form.html'
 
     def get_form(self):
-        form = super(StockExchangeSaleCreateView, self).get_form()
+        form = super(__class__, self).get_form()
 
         form.fields['stock'].widget.attrs.update({'class': 'form-select'})
         form.fields['quote'].widget.attrs.update({'class': 'form-control'})
@@ -153,10 +165,7 @@ class StockExchangeSaleCreateView(LoginRequiredMixin, CreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        context['request'] = self.request
-        context['app'] = resolve(self.request.path)
-        context['site'] = Site.objects.get_current(self.request)
-        context['title'] = 'Stock Exchange Sale - %s' % (StockNetPositionConfig.verbose_name)
+        context['title'] = 'Stock Exchange Sale - %s' % (apps.get_app_config(self.request.resolver_match.app_name).verbose_name)
         context['nav_links'] = NavLink.objects.order_by('date_created').all()
 
         return context
@@ -166,3 +175,6 @@ class StockExchangeSaleCreateView(LoginRequiredMixin, CreateView):
         form.instance.purchase_sale = 'sale'
 
         return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('%s:stock-exchange' % self.request.resolver_match.app_name)
